@@ -123,6 +123,7 @@ namespace VoiceBox
         TextBlock _styleSaveLabel;
         string _renameFrom;
         EqCurve _eqCurve;
+        DispatcherTimer _saveDebounce;
         Fader _eqLowF;
         Fader _eqMidF;
         Fader _eqHighF;
@@ -219,6 +220,12 @@ namespace VoiceBox
             _breath = AppSettings.VoiceBreath;
             _tension = AppSettings.VoiceTension;
             _gender = AppSettings.VoiceGender;
+            // The curve, its three faders, their labels and the bypass chip all read the EQ while
+            // they are built, so the saved bands have to be back first.
+            RenderStyle.Eq.LowDb = AppSettings.EqLow;
+            RenderStyle.Eq.MidDb = AppSettings.EqMid;
+            RenderStyle.Eq.HighDb = AppSettings.EqHigh;
+            RenderStyle.Eq.Bypass = AppSettings.EqBypass;
             ApplySavedMix();
             _recorder = new Recorder();
             if (Application.Current != null)
@@ -228,6 +235,15 @@ namespace VoiceBox
             }
 
             BuildUi();
+            // A style is a set of numbers rather than a file name, so it is restored after the
+            // panel exists: the badge and the describe line are what make it visible as active.
+            if (AppSettings.StyleToRestore != null)
+            {
+                StyleProfile restored = AppSettings.StyleToRestore;
+                AppSettings.StyleToRestore = null;
+                RenderStyle.Current = restored;
+                ShowStyle(restored);
+            }
             WarnSoloConflict();
 
             _timer = new DispatcherTimer();
@@ -240,7 +256,12 @@ namespace VoiceBox
                 SelectTrack("v1");
                 UpdateStatusVoice();
             };
-            Closing += delegate { if (_recorder != null) _recorder.Stop(); };
+            Closing += delegate
+            {
+                if (_recorder != null) _recorder.Stop();
+                // A band dragged and the window shut before the debounce fired still gets saved.
+                AppSettings.Save();
+            };
             PreviewKeyDown += OnKey;
         }
 
@@ -1965,7 +1986,7 @@ namespace VoiceBox
             rightS.Margin = new Thickness(0, 0, 12, 0);
             rightS.Children.Add(T.Txt("STANDALONE", 9, T.TextFaint, FontWeights.SemiBold));
             rightS.Children.Add(T.Sep());
-            rightS.Children.Add(T.Txt("VOICEBOX 2.4.9 · NEURAL DIFFUSION", 9, T.TextFaint, FontWeights.SemiBold));
+            rightS.Children.Add(T.Txt("VOICEBOX 2.4.10 · NEURAL DIFFUSION", 9, T.TextFaint, FontWeights.SemiBold));
             bar.Children.Add(sp);
             bar.Children.Add(rightS);
 
@@ -2755,7 +2776,30 @@ namespace VoiceBox
             _eqLowVal.Text = RenderStyle.Eq.LowDb.ToString("0.0") + " dB";
             _eqMidVal.Text = RenderStyle.Eq.MidDb.ToString("0.0") + " dB";
             _eqHighVal.Text = RenderStyle.Eq.HighDb.ToString("0.0") + " dB";
+            PersistEq();
             MarkAudioDirty();
+        }
+
+        // Bands arrive from both the faders and by dragging nodes on the curve, so this debounces
+        // the write: a drag would otherwise rewrite the settings file sixty times a second.
+        void PersistEq()
+        {
+            AppSettings.EqLow = RenderStyle.Eq.LowDb;
+            AppSettings.EqMid = RenderStyle.Eq.MidDb;
+            AppSettings.EqHigh = RenderStyle.Eq.HighDb;
+            AppSettings.EqBypass = RenderStyle.Eq.Bypass;
+            if (_saveDebounce == null)
+            {
+                _saveDebounce = new DispatcherTimer();
+                _saveDebounce.Interval = TimeSpan.FromMilliseconds(400);
+                _saveDebounce.Tick += delegate
+                {
+                    _saveDebounce.Stop();
+                    AppSettings.Save();
+                };
+            }
+            _saveDebounce.Stop();
+            _saveDebounce.Start();
         }
 
         UIElement BuildEqPanel()
@@ -2786,6 +2830,7 @@ namespace VoiceBox
                 RenderStyle.Eq.LowDb = v;
                 _eqLowVal.Text = v.ToString("0.0") + " dB";
                 if (_eqCurve != null) _eqCurve.InvalidateVisual();
+                PersistEq();
                 MarkAudioDirty();
             }, out _eqLowVal, out _eqLowF));
             body.Children.Add(SliderRow("MID", -12, 12, RenderStyle.Eq.MidDb, delegate(double v)
@@ -2793,6 +2838,7 @@ namespace VoiceBox
                 RenderStyle.Eq.MidDb = v;
                 _eqMidVal.Text = v.ToString("0.0") + " dB";
                 if (_eqCurve != null) _eqCurve.InvalidateVisual();
+                PersistEq();
                 MarkAudioDirty();
             }, out _eqMidVal, out _eqMidF));
             body.Children.Add(SliderRow("HIGH", -12, 12, RenderStyle.Eq.HighDb, delegate(double v)
@@ -2800,6 +2846,7 @@ namespace VoiceBox
                 RenderStyle.Eq.HighDb = v;
                 _eqHighVal.Text = v.ToString("0.0") + " dB";
                 if (_eqCurve != null) _eqCurve.InvalidateVisual();
+                PersistEq();
                 MarkAudioDirty();
             }, out _eqHighVal, out _eqHighF));
 
@@ -3021,18 +3068,27 @@ namespace VoiceBox
             }
             RenderStyle.Current = p;
             MarkAudioDirty();
+            ShowStyle(p);
+            AppSettings.Save();
+            Toast("STYLE APPLIED", "New notes now follow this vocal's colour and phrasing.");
+        }
+
+        // The visible half of a style: what the panel says is active. Split out so a restored
+        // style fills the panel in without announcing itself as a fresh choice.
+        void ShowStyle(StyleProfile p)
+        {
             _styleInfo.Text = p.Source + "\nrange " + MidiName((int)Math.Round(p.LowNote)) + "–" + MidiName((int)Math.Round(p.HighNote)) +
                 " · vibrato " + p.VibratoRate.ToString("0.0") + " Hz ×" + p.VibScale.ToString("0.00") +
                 "\nbright " + ((int)(p.Brightness * 100)) + "% · air " + ((int)(p.Breath * 100)) + "%";
             _styleInfo.TextWrapping = TextWrapping.Wrap;
             _styleBadge.Child = T.Txt("ACTIVE", 8, T.C("#8ff0d4"), FontWeights.SemiBold);
-            Toast("STYLE APPLIED", "New notes now follow this vocal's colour and phrasing.");
         }
 
         void ClearStyle()
         {
             RenderStyle.Current = null;
             MarkAudioDirty();
+            AppSettings.Save();
             _styleInfo.Text = "Learn a sung phrase — range, vibrato, brightness and air — then sing new notes in that style.";
             _styleBadge.Child = T.Txt("OFF", 8, T.C("#9ec8f5"), FontWeights.SemiBold);
             Toast("STYLE OFF", "Back to the default vocal character.");
@@ -3979,6 +4035,7 @@ namespace VoiceBox
             RenderStyle.Eq.Bypass = !RenderStyle.Eq.Bypass;
             if (_eqChip != null) T.SetChipState(_eqChip, !RenderStyle.Eq.Bypass);
             if (_eqCurve != null) _eqCurve.InvalidateVisual();
+            PersistEq();
             MarkAudioDirty();
             Toast("EQUALIZER " + (RenderStyle.Eq.Bypass ? "BYPASSED" : "ON"), RenderStyle.Eq.Bypass
                 ? "The take plays without the EQ curve."
