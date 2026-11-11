@@ -126,6 +126,20 @@ public static class XCheck
         if (bad.Count == 0) r.AppendLine("VERIFY OK");
         return r.ToString();
     }
+
+    // Loudest sample in a written take, so a render that came out silent can be asserted
+    // on directly instead of being inferred from the mix report.
+    public static long Peak(string path)
+    {
+        Wav w = Read(path);
+        long peak = 0;
+        for (long i = 0; i < w.Samples.Length; i++)
+        {
+            long a = Math.Abs((long)w.Samples[i]);
+            if (a > peak) peak = a;
+        }
+        return peak;
+    }
 }
 '@
 
@@ -162,8 +176,59 @@ foreach ($t in [VoiceBox.Project]::Tracks) {
 $report = [XCheck]::Verify($mixPath, $stemPaths.ToArray(), $Tolerance)
 [Console]::WriteLine($report.TrimEnd())
 
+# A solo on a muted track must not silence the rest of the mix. It once did: the solo excluded
+# every other track while the mute removed the soloed one, so the render held nothing but the
+# metronome click, and no amount of level juggling could make a voice audible. This keeps that
+# from coming back unnoticed.
+$soloReport = New-Object System.Text.StringBuilder
+$trapTrack = $null
+foreach ($t in [VoiceBox.Project]::Tracks) {
+  foreach ($n in [VoiceBox.Project]::Notes) { if ($n.Track -eq $t.Id) { $trapTrack = $t; break } }
+  if ($null -ne $trapTrack) { break }
+}
+if ($null -eq $trapTrack) {
+  $soloReport.AppendLine("FAIL no track carries notes, so the muted-solo check cannot run") | Out-Null
+}
+else {
+  $wasMuted = $trapTrack.Muted
+  $wasSolo = $trapTrack.Solo
+  $trapTrack.Muted = $true
+  $trapTrack.Solo = $true
+  $anySoloTrap = [VoiceBox.VocalSynth]::AnySolo()
+  if ($anySoloTrap) {
+    $soloReport.AppendLine("FAIL a solo on muted " + $trapTrack.Name + " still engaged solo mode") | Out-Null
+  }
+  $audible = 0
+  foreach ($t in [VoiceBox.Project]::Tracks) {
+    if ($t.Id -eq $trapTrack.Id) { continue }
+    $hasNotes = $false
+    foreach ($n in [VoiceBox.Project]::Notes) { if ($n.Track -eq $t.Id) { $hasNotes = $true; break } }
+    if (-not $hasNotes) { continue }
+    if ([VoiceBox.VocalSynth]::TrackAudible($t, $anySoloTrap)) { $audible++ }
+    else { $soloReport.AppendLine("FAIL " + $t.Name + " was silenced by a solo on muted " + $trapTrack.Name) | Out-Null }
+  }
+  if ($audible -eq 0) {
+    $soloReport.AppendLine("FAIL the muted-solo case left no audible track at all") | Out-Null
+  }
+  $trapPath = Join-Path $dir 'muted-solo.wav'
+  Render-One $trapPath ([VoiceBox.Project]::Notes) | Out-Null
+  $trapPeak = [XCheck]::Peak($trapPath)
+  if ($trapPeak -le 0) {
+    $soloReport.AppendLine("FAIL the mix is silent while " + $trapTrack.Name + " is muted and soloed") | Out-Null
+  }
+  $trapTrack.Muted = $wasMuted
+  $trapTrack.Solo = $wasSolo
+  $soloReport.AppendLine("MUTED_SOLO " + $trapTrack.Name + " muted+soloed -> AnySolo=" + $anySoloTrap +
+                         " otherAudibleTracks=" + $audible + " mixPeak=" + $trapPeak) | Out-Null
+  if ($soloReport.ToString() -notmatch 'FAIL ') {
+    $soloReport.AppendLine("MUTED_SOLO OK") | Out-Null
+  }
+}
+[Console]::WriteLine($soloReport.ToString().TrimEnd())
+
 if ($Check) {
   if ($report -match 'FAIL ') { exit 1 }
+  if ($soloReport.ToString() -match 'FAIL ') { exit 1 }
   Write-Output "XTEST OK"
   exit 0
 }
