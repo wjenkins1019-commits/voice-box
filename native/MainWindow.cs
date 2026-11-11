@@ -221,6 +221,7 @@ namespace VoiceBox
             }
 
             BuildUi();
+            WarnSoloConflict();
 
             _timer = new DispatcherTimer();
             _timer.Interval = TimeSpan.FromMilliseconds(33);
@@ -887,6 +888,7 @@ namespace VoiceBox
                     BuildTrackHeads();
                     PersistMix();
                     MarkAudioDirty();
+                    WarnSoloConflict();
                 });
                 Border s = MiniBtn("S", tr.Solo, delegate
                 {
@@ -894,6 +896,7 @@ namespace VoiceBox
                     BuildTrackHeads();
                     PersistMix();
                     MarkAudioDirty();
+                    WarnSoloConflict();
                 });
                 ctl.Children.Add(m);
                 ctl.Children.Add(Spacer(3));
@@ -1945,7 +1948,7 @@ namespace VoiceBox
             rightS.Margin = new Thickness(0, 0, 12, 0);
             rightS.Children.Add(T.Txt("STANDALONE", 9, T.TextFaint, FontWeights.SemiBold));
             rightS.Children.Add(T.Sep());
-            rightS.Children.Add(T.Txt("VOICEBOX 2.4.2 · NEURAL DIFFUSION", 9, T.TextFaint, FontWeights.SemiBold));
+            rightS.Children.Add(T.Txt("VOICEBOX 2.4.3 · NEURAL DIFFUSION", 9, T.TextFaint, FontWeights.SemiBold));
             bar.Children.Add(sp);
             bar.Children.Add(rightS);
 
@@ -3433,6 +3436,20 @@ namespace VoiceBox
                 t.Pan = AppSettings.MixPanOf(t.Id);
                 t.Muted = AppSettings.MixMutedOf(t.Id);
                 t.Solo = AppSettings.MixSoloOf(t.Id);
+            }
+        }
+
+        // Mute and solo on one track means that track is silent while its solo still excludes
+        // everything else. Say so, rather than leaving a mix whose only sound is the click.
+        void WarnSoloConflict()
+        {
+            foreach (Track t in Project.Tracks)
+            {
+                if (t.Muted && t.Solo)
+                {
+                    Toast("MIX", t.Name + " is muted and soloed — its solo is ignored until you unmute it.");
+                    return;
+                }
             }
         }
 

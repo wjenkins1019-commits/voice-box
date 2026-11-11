@@ -543,9 +543,12 @@ namespace VoiceBox
 
         // Mute is absolute; solo silences everything that is not soloed. Shared with stem
         // export so a skipped stem matches exactly what the mix leaves out.
+        // Only a solo on a track that can actually be heard counts. Pressing S and then M on the
+        // same track used to leave solo engaged on a silenced track, which silenced every other
+        // track as well: a mix of nothing, with the metronome as the only audible part.
         public static bool AnySolo()
         {
-            foreach (Track t in Project.Tracks) if (t.Solo) return true;
+            foreach (Track t in Project.Tracks) if (t.Solo && !t.Muted) return true;
             return false;
         }
 
