@@ -127,6 +127,11 @@ namespace VoiceBox
         Fader _eqLowF;
         Fader _eqMidF;
         Fader _eqHighF;
+        Fader _vibScaleF;
+        Fader _breathF;
+        Fader _tensionF;
+        Fader _genderF;
+        Border _resetChip;
 
         // ---- audio ----
         string _wav;
@@ -1400,6 +1405,12 @@ namespace VoiceBox
             StackPanel body = new StackPanel();
             body.Margin = new Thickness(11, 9, 11, 10);
 
+            _resetChip = T.Chip("RESET DEFAULTS", false, delegate { ResetDefaults(); }, null);
+            _resetChip.HorizontalAlignment = HorizontalAlignment.Left;
+            _resetChip.Margin = new Thickness(0, 0, 0, 8);
+            _resetChip.ToolTip = "Puts vibrato, breath, tension, gender, the EQ and the style back to their factory values";
+            body.Children.Add(_resetChip);
+
             Grid padGrid = new Grid();
             padGrid.ColumnDefinitions.Add(ColFix(132));
             padGrid.ColumnDefinitions.Add(ColFix(10));
@@ -1475,28 +1486,28 @@ namespace VoiceBox
                 _tensionVal.Text = ((int)v).ToString();
                 PersistVoice();
                 MarkAudioDirty();
-            }, out _tensionVal));
+            }, out _tensionVal, out _tensionF));
             sliders.Children.Add(SliderRow("VIBRATO", 0, 200, VocalSynth.VibScale * 100, delegate(double v)
             {
                 VocalSynth.VibScale = Math.Max(0, v) / 100.0;
                 _vibScaleVal.Text = ((int)v) + "%";
                 PersistVoice();
                 MarkAudioDirty();
-            }, out _vibScaleVal));
+            }, out _vibScaleVal, out _vibScaleF));
             sliders.Children.Add(SliderRow("BREATH", 0, 100, _breath, delegate(double v)
             {
                 _breath = v;
                 _breathVal.Text = ((int)v).ToString();
                 PersistVoice();
                 MarkAudioDirty();
-            }, out _breathVal));
+            }, out _breathVal, out _breathF));
             sliders.Children.Add(SliderRow("GENDER", -50, 50, _gender, delegate(double v)
             {
                 _gender = v;
                 _genderVal.Text = ((int)v).ToString();
                 PersistVoice();
                 MarkAudioDirty();
-            }, out _genderVal));
+            }, out _genderVal, out _genderF));
 
             Track ct = FindTrack(CurrentTrack);
             double ctGain = ct != null ? ct.GainDb : 0;
@@ -1986,7 +1997,7 @@ namespace VoiceBox
             rightS.Margin = new Thickness(0, 0, 12, 0);
             rightS.Children.Add(T.Txt("STANDALONE", 9, T.TextFaint, FontWeights.SemiBold));
             rightS.Children.Add(T.Sep());
-            rightS.Children.Add(T.Txt("VOICEBOX 2.4.10 · NEURAL DIFFUSION", 9, T.TextFaint, FontWeights.SemiBold));
+            rightS.Children.Add(T.Txt("VOICEBOX 2.4.11 · NEURAL DIFFUSION", 9, T.TextFaint, FontWeights.SemiBold));
             bar.Children.Add(sp);
             bar.Children.Add(rightS);
 
@@ -3528,6 +3539,65 @@ namespace VoiceBox
 
         // The four voice values are what a tuned voice consists of, so a fader move is worth
         // remembering the moment it happens; they are small scalars and the file is tiny.
+        // One press puts back everything a first launch shows: the four voice faders, the three EQ
+        // bands with their bypass, and the active style. Track levels, pans and fade timing are the
+        // user's mix rather than the voice's character, so they are deliberately left alone.
+        void ResetDefaults()
+        {
+            VocalSynth.VibScale = 1.0;
+            _breath = 42;
+            _tension = 18;
+            _gender = -6;
+            SetFader(_vibScaleF, 100);
+            SetFader(_breathF, _breath);
+            SetFader(_tensionF, _tension);
+            SetFader(_genderF, _gender);
+            if (_vibScaleVal != null) _vibScaleVal.Text = "100%";
+            if (_breathVal != null) _breathVal.Text = "42";
+            if (_tensionVal != null) _tensionVal.Text = "18";
+            if (_genderVal != null) _genderVal.Text = "-6";
+
+            RenderStyle.Eq.LowDb = 0;
+            RenderStyle.Eq.MidDb = 0;
+            RenderStyle.Eq.HighDb = 0;
+            RenderStyle.Eq.Bypass = false;
+            SetFader(_eqLowF, 0);
+            SetFader(_eqMidF, 0);
+            SetFader(_eqHighF, 0);
+            if (_eqLowVal != null) _eqLowVal.Text = "0.0 dB";
+            if (_eqMidVal != null) _eqMidVal.Text = "0.0 dB";
+            if (_eqHighVal != null) _eqHighVal.Text = "0.0 dB";
+            if (_eqCurve != null) _eqCurve.InvalidateVisual();
+            if (_eqChip != null) T.SetChipState(_eqChip, true);
+
+            RenderStyle.Current = null;
+            if (_styleName != null) _styleName.Text = "";
+            if (_styleInfo != null) _styleInfo.Text = "Learn a sung phrase — range, vibrato, brightness and air — then sing new notes in that style.";
+            if (_styleBadge != null) _styleBadge.Child = T.Txt("OFF", 8, T.C("#9ec8f5"), FontWeights.SemiBold);
+
+            AppSettings.VoiceVibScale = VocalSynth.VibScale;
+            AppSettings.VoiceBreath = _breath;
+            AppSettings.VoiceTension = _tension;
+            AppSettings.VoiceGender = _gender;
+            AppSettings.EqLow = 0;
+            AppSettings.EqMid = 0;
+            AppSettings.EqHigh = 0;
+            AppSettings.EqBypass = false;
+            AppSettings.Save();
+
+            MarkAudioDirty();
+            Toast("DEFAULTS RESTORED", "Vibrato, breath, tension, gender, the EQ and the style are back to factory.");
+        }
+
+        // A fader draws from its Value field and only calls its handler while dragging, so a reset
+        // sets the number and repaints instead of pretending to be a drag.
+        static void SetFader(Fader f, double v)
+        {
+            if (f == null) return;
+            f.Value = v;
+            f.InvalidateVisual();
+        }
+
         void PersistVoice()
         {
             AppSettings.VoiceVibScale = VocalSynth.VibScale;
