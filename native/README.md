@@ -54,7 +54,21 @@ notes found, plus the input device count and a short live capture:
 powershell -NoProfile -ExecutionPolicy Bypass -File native/ptest.ps1
 ```
 
-Two switches make it usable without a microphone: **`-Headless`** skips the live capture
+`xtest.ps1` checks the audio export the same way, without a microphone or a sound card. It
+renders the arrangement to a temporary WAV through `VocalSynth.Render` — the path behind
+**EXPORT RAW** and the stem writer — writes a stem per audible track at raw level, then reads
+the files back and asserts the format (PCM, 48 kHz, 16-bit, stereo, matching frame counts)
+and that the summed stems match the mix to within a few LSB of 16-bit rounding. It prints
+`XTEST OK` or the failed expectations and exits non-zero on a mismatch:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File native/xtest.ps1 -Check
+```
+
+The first run on a machine without the piano table cache takes longer while those tables are
+built; later runs reuse `%LOCALAPPDATA%\VoiceBox\Piano Cache`.
+
+Two switches make `ptest.ps1` usable without a microphone: **`-Headless`** skips the live capture
 (runners have no input device), and **`-Check`** asserts the expected notes — A3/E4/C4 in
 order, nothing from silence, a D4 for the vibrato tone — printing `PTEST OK` or the failed
 expectations, and exiting non-zero so a pitch-tracking regression fails a build. CI runs

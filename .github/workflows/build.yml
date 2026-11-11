@@ -59,6 +59,20 @@ jobs:
             throw "ptest.ps1 reported a pitch-tracking regression (exit $code)"
           }
 
+      # Renders the mix and one stem per track through the same code the export buttons use,
+      # then reads the files back: the header has to say 48 kHz / 16-bit / stereo, and the
+      # summed stems have to match the mix within a few LSB of 16-bit rounding.
+      - name: Check the WAV export
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$PWD\native\xtest.ps1" -Check
+          $code = $LASTEXITCODE
+          if ($null -eq $code) { $code = 0 }
+          if ($code -ne 0) {
+            throw "xtest.ps1 reported a bad export (exit $code)"
+          }
+
       - name: Upload VoiceBox.exe
         uses: actions/upload-artifact@v4
         with:
