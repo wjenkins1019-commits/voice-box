@@ -97,6 +97,13 @@ namespace VoiceBox
             piano.Id = "p1"; piano.Name = "Grand Piano"; piano.Voice = "Modelled Grand"; piano.Color = "#2b8fb0";
             piano.Clips.Add(new Clip(0, 48)); piano.Clips.Add(new Clip(56, 28));
 
+            // Measured at unity the lead vocal sat 3.6 dB under the piano and was masked by it,
+            // which read as "I can't hear the singer". Lift the voices and tuck the piano back so
+            // the singer is the loudest thing in the balance out of the box.
+            lead.GainDb = 4;
+            harm.GainDb = 2;
+            piano.GainDb = -2;
+
             Tracks.Add(lead);
             Tracks.Add(harm);
             Tracks.Add(piano);
