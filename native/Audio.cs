@@ -435,7 +435,12 @@ namespace VoiceBox
                 }
                 double y = 0;
                 for (int i = 0; i < 4; i++) y += _f[i].Process(src) * Gain[i];
-                return y;
+                // The resonators ring on the source's sharp edges, so their sum is spiky: at the
+                // same peak it measured 29 dB of crest against the piano's 19, which is why a
+                // sung note read as a click with a tone behind it rather than a held vowel.
+                // Soft saturation rounds the peaks off without touching the vowel colour.
+                const double drive = 2.6;
+                return Math.Tanh(y * drive) / drive;
             }
         }
 
