@@ -23,6 +23,13 @@ namespace VoiceBox
         public static Dictionary<string, bool> MixMuted = new Dictionary<string, bool>();
         public static Dictionary<string, bool> MixSolo = new Dictionary<string, bool>();
 
+        // Voice character, so a tuned voice comes back the way it was left rather than at the
+        // factory values. The ranges match what the faders and the renderer accept.
+        public static double VoiceVibScale = 1.0;
+        public static double VoiceBreath = 42;
+        public static double VoiceTension = 18;
+        public static double VoiceGender = -6;
+
         // Set the first time the shortcut hint is shown, so it never nags a returning user.
         public static bool HelpHintSeen;
 
@@ -77,6 +84,26 @@ namespace VoiceBox
                         MixSolo[k.Substring(4, k.Length - 9)] = v == "1" || v == "true";
                     else if (k == "hint.help")
                         HelpHintSeen = v == "1" || v == "true";
+                    else if (k == "voice.vibScale")
+                    {
+                        double d;
+                        if (double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out d)) VoiceVibScale = Math.Max(0, Math.Min(2, d));
+                    }
+                    else if (k == "voice.breath")
+                    {
+                        double d;
+                        if (double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out d)) VoiceBreath = Math.Max(0, Math.Min(100, d));
+                    }
+                    else if (k == "voice.tension")
+                    {
+                        double d;
+                        if (double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out d)) VoiceTension = Math.Max(0, Math.Min(100, d));
+                    }
+                    else if (k == "voice.gender")
+                    {
+                        double d;
+                        if (double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out d)) VoiceGender = Math.Max(-50, Math.Min(50, d));
+                    }
                 }
             }
             catch { }
@@ -102,6 +129,10 @@ namespace VoiceBox
                     sb.AppendLine("mix." + kv.Key + ".mute=" + (kv.Value ? "1" : "0"));
                 foreach (KeyValuePair<string, bool> kv in MixSolo)
                     sb.AppendLine("mix." + kv.Key + ".solo=" + (kv.Value ? "1" : "0"));
+                sb.AppendLine("voice.vibScale=" + VoiceVibScale.ToString("0.###", CultureInfo.InvariantCulture));
+                sb.AppendLine("voice.breath=" + VoiceBreath.ToString("0.###", CultureInfo.InvariantCulture));
+                sb.AppendLine("voice.tension=" + VoiceTension.ToString("0.###", CultureInfo.InvariantCulture));
+                sb.AppendLine("voice.gender=" + VoiceGender.ToString("0.###", CultureInfo.InvariantCulture));
                 if (HelpHintSeen) sb.AppendLine("hint.help=1");
                 File.WriteAllText(FilePath, sb.ToString());
             }

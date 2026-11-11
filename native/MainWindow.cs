@@ -213,6 +213,12 @@ namespace VoiceBox
             AppSettings.Load();
             _xfadeMs = AppSettings.FadeMs;
             _xfadeLinear = AppSettings.FadeLinear;
+            // Restored before the UI is built, so the faders open where the last session left
+            // them instead of snapping when they are first touched.
+            VocalSynth.VibScale = AppSettings.VoiceVibScale;
+            _breath = AppSettings.VoiceBreath;
+            _tension = AppSettings.VoiceTension;
+            _gender = AppSettings.VoiceGender;
             ApplySavedMix();
             _recorder = new Recorder();
             if (Application.Current != null)
@@ -1446,24 +1452,28 @@ namespace VoiceBox
             {
                 _tension = v;
                 _tensionVal.Text = ((int)v).ToString();
+                PersistVoice();
                 MarkAudioDirty();
             }, out _tensionVal));
             sliders.Children.Add(SliderRow("VIBRATO", 0, 200, VocalSynth.VibScale * 100, delegate(double v)
             {
                 VocalSynth.VibScale = Math.Max(0, v) / 100.0;
                 _vibScaleVal.Text = ((int)v) + "%";
+                PersistVoice();
                 MarkAudioDirty();
             }, out _vibScaleVal));
             sliders.Children.Add(SliderRow("BREATH", 0, 100, _breath, delegate(double v)
             {
                 _breath = v;
                 _breathVal.Text = ((int)v).ToString();
+                PersistVoice();
                 MarkAudioDirty();
             }, out _breathVal));
             sliders.Children.Add(SliderRow("GENDER", -50, 50, _gender, delegate(double v)
             {
                 _gender = v;
                 _genderVal.Text = ((int)v).ToString();
+                PersistVoice();
                 MarkAudioDirty();
             }, out _genderVal));
 
@@ -1955,7 +1965,7 @@ namespace VoiceBox
             rightS.Margin = new Thickness(0, 0, 12, 0);
             rightS.Children.Add(T.Txt("STANDALONE", 9, T.TextFaint, FontWeights.SemiBold));
             rightS.Children.Add(T.Sep());
-            rightS.Children.Add(T.Txt("VOICEBOX 2.4.8 · NEURAL DIFFUSION", 9, T.TextFaint, FontWeights.SemiBold));
+            rightS.Children.Add(T.Txt("VOICEBOX 2.4.9 · NEURAL DIFFUSION", 9, T.TextFaint, FontWeights.SemiBold));
             bar.Children.Add(sp);
             bar.Children.Add(rightS);
 
@@ -3458,6 +3468,17 @@ namespace VoiceBox
                     return;
                 }
             }
+        }
+
+        // The four voice values are what a tuned voice consists of, so a fader move is worth
+        // remembering the moment it happens; they are small scalars and the file is tiny.
+        void PersistVoice()
+        {
+            AppSettings.VoiceVibScale = VocalSynth.VibScale;
+            AppSettings.VoiceBreath = _breath;
+            AppSettings.VoiceTension = _tension;
+            AppSettings.VoiceGender = _gender;
+            AppSettings.Save();
         }
 
         void PersistMix()
