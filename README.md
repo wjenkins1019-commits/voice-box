@@ -78,3 +78,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\native\ptest.ps1
 The singing voice is a wavetable/formant synthesis engine written for this project — real
 signal processing, not a trained neural network — so it runs on a plain Windows machine with
 no GPU and no model download. Pitch tracking for `CONVERT TO MIDI` is monophonic.
+
+## License
+
+The code is released under the MIT license — see [LICENSE](LICENSE).
+
+The 42 voice models listed in the app are not part of this repository: each row links to
+its own official page, and those models keep their own licenses and terms.
