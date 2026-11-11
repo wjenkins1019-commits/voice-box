@@ -45,15 +45,18 @@ jobs:
 
       # ptest.ps1 feeds synthetic tones through PitchTracker.ToNotes, so it needs no
       # microphone. -Headless skips the live capture and -Check makes a wrong note a
-      # failure. `exit 1` inside a called script only sets $LASTEXITCODE, so the step has
-      # to look at that itself; otherwise a regression would pass silently.
+      # failure. `exit 1` inside a called script only sets $LASTEXITCODE and does not
+      # stop this step, so the code is inspected here - and a script that finishes
+      # normally leaves it $null, which has to count as success rather than as a failure.
       - name: Check the transcriber
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & "$PWD\native\ptest.ps1" -Headless -Check
-          if ($LASTEXITCODE -ne 0) {
-            throw "ptest.ps1 reported a pitch-tracking regression (exit $LASTEXITCODE)"
+          $code = $LASTEXITCODE
+          if ($null -eq $code) { $code = 0 }
+          if ($code -ne 0) {
+            throw "ptest.ps1 reported a pitch-tracking regression (exit $code)"
           }
 
       - name: Upload VoiceBox.exe

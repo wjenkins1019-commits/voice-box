@@ -100,4 +100,6 @@ if ($Check) {
     exit 1
   }
   Write-Output "PTEST OK"
+  # Explicit, because a script that just falls off the end leaves $LASTEXITCODE unset.
+  exit 0
 }
