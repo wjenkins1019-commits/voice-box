@@ -357,9 +357,92 @@ namespace VoiceBox
             return table;
         }
 
+        // One formant resonance. Direct form I, because the state has to stay exact from
+        // sample to sample for a sustained note to hold a steady vowel.
+        struct Formant
+        {
+            double b0, b2, a1, a2;
+            double x1, x2, y1, y2;
+
+            public void Set(double freq, double bw, double fs)
+            {
+                double w = 2 * Math.PI * freq / fs;
+                double q = Math.Max(0.6, freq / Math.Max(40.0, bw));
+                double alpha = Math.Sin(w) / (2 * q);
+                double a0 = 1 + alpha;
+                b0 = alpha / a0;
+                b2 = -alpha / a0;
+                a1 = -2 * Math.Cos(w) / a0;
+                a2 = (1 - alpha) / a0;
+                x1 = 0; x2 = 0; y1 = 0; y2 = 0;
+            }
+
+            public double Process(double x)
+            {
+                double y = b0 * x + b2 * x2 - a1 * y1 - a2 * y2;
+                x2 = x1; x1 = x; y2 = y1; y1 = y;
+                return y;
+            }
+        }
+
+        // A vowel is four resonances fed by one source. The colour glides in from a neutral
+        // schwa over the first 80 ms and drifts slowly after that. This is the difference
+        // between a sung vowel and a held keyboard note: a static spectrum cannot move, and
+        // a voice that never moves inside a note reads as an instrument.
+        class FormantBank
+        {
+            static readonly double[] Neutral = { 500, 1500, 2500, 3500 };
+            static readonly double[] Bandwidth = { 80, 100, 130, 170 };
+            static readonly double[] Gain = { 1.0, 0.55, 0.32, 0.18 };
+
+            readonly Formant[] _f = new Formant[4];
+            readonly double[] _from = new double[4];
+            readonly double[] _to = new double[4];
+            readonly double _drift0, _drift1;
+            double _lastT = -1;
+
+            public FormantBank(int vowel, double genderMul, int seed)
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    _from[i] = Neutral[i] * genderMul;
+                    _to[i] = (i < 3 ? Formants[vowel, i] : 3500) * genderMul;
+                    _f[i].Set(_from[i], Bandwidth[i], Sr);
+                }
+                Random r = new Random(unchecked(seed * 6151 + 29));
+                _drift0 = r.NextDouble() * Math.PI * 2;
+                _drift1 = r.NextDouble() * Math.PI * 2;
+            }
+
+            public double Process(double src, double t, double tension)
+            {
+                // Retune every 32 samples: formants move slowly, and re-deriving four biquads
+                // per sample would cost more than the render can spare.
+                if (_lastT < 0 || t - _lastT >= 32.0 / Sr)
+                {
+                    _lastT = t;
+                    double glide = Math.Min(1.0, t / 0.080);
+                    for (int i = 0; i < 4; i++)
+                    {
+                        double centre = _from[i] + (_to[i] - _from[i]) * glide;
+                        double drift = 1.0 + 0.020 * Math.Sin(2 * Math.PI * 0.7 * t + _drift0 + i) +
+                                             0.010 * Math.Sin(2 * Math.PI * 0.31 * t + _drift1);
+                        double f = centre * drift * (1.0 + tension * 0.06 * i);
+                        if (f > 9000) f = 9000;
+                        if (f < 90) f = 90;
+                        _f[i].Set(f, Bandwidth[i], Sr);
+                    }
+                }
+                double y = 0;
+                for (int i = 0; i < 4; i++) y += _f[i].Process(src) * Gain[i];
+                return y;
+            }
+        }
+
         static double Envelope(double t, double dur)
         {
-            if (t < 0.045) return t / 0.045;
+            // Soft enough that the consonant, not the envelope, starts the syllable.
+            if (t < 0.020) return t / 0.020;
             if (t <= dur) return 1.0;
             double rel = 1.0 - (t - dur) / 0.20;
             return rel < 0 ? 0 : rel;
@@ -424,7 +507,7 @@ namespace VoiceBox
 
                 double f0 = 440.0 * Math.Pow(2.0, (note.Midi - 69) / 12.0);
                 int vi = VowelIndex(note.Vowel);
-                float[] table = MakeTable(f0, vi, genderMul, tensionAmt, tilt);
+                FormantBank formants = new FormantBank(vi, genderMul, note.Id);
 
                 int start = (int)(note.Start * spb * Sr);
                 int durSamples = (int)(note.Dur * spb * Sr);
@@ -447,6 +530,10 @@ namespace VoiceBox
                 double phase = 0;
                 double lp = 0;
                 double lpv = 0;
+                // The style's spectral tilt shades the glottal source itself, before the
+                // formants: a duller source reads as a softer, breathier voice.
+                double srcLp = 0;
+                double srcLpCoef = Math.Max(0.12, Math.Min(0.95, 0.45 + tilt * 0.5));
                 for (int k = 0; k < len; k++)
                 {
                     int idx = start + k;
@@ -458,16 +545,17 @@ namespace VoiceBox
                     double vibRate = styled ? st.VibratoRate : note.Rate;
                     double vib = Math.Sin(2 * Math.PI * vibRate * t) * note.Vib * (styled ? st.VibScale : 1.0) * 55 * vibOn;
                     double scoop = prog < 0.1 ? -30 * (1 - prog / 0.1) : 0;
-                    double f = f0 * Math.Pow(2.0, (vib + scoop + note.Drift) / 1200.0);
+                    // A few cents of constant jitter: sung pitch is never a perfect ramp.
+                    double jitter = 4.0 * Math.Sin(2 * Math.PI * 3.7 * t + note.Id * 1.7);
+                    double f = f0 * Math.Pow(2.0, (vib + scoop + note.Drift + jitter) / 1200.0);
 
                     phase += f / Sr;
                     if (phase >= 1) phase -= 1;
 
-                    double idxf = phase * TableSize;
-                    int i0 = (int)idxf & (TableSize - 1);
-                    int i1 = (i0 + 1) & (TableSize - 1);
-                    double frac = idxf - Math.Floor(idxf);
-                    double s = table[i0] * (1 - frac) + table[i1] * frac;
+                    // A sawtooth carries every harmonic; the formants decide which survive.
+                    double saw = 2.0 * phase - 1.0;
+                    srcLp = srcLp + (1.0 - srcLpCoef) * (saw - srcLp);
+                    double s = formants.Process(srcLp, t, tensionAmt);
 
                     if (breathAmt > 0.05)
                     {
