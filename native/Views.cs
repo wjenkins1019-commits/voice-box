@@ -264,6 +264,15 @@ namespace VoiceBox
         public MainWindow Host;
         public string Track = "v1";
 
+        // Raised on a double-click, so the window can put a lyric field on top of the note.
+        public event Action<Note> LyricEditRequested;
+
+        // Where the note is drawn, so an editor can be placed over it.
+        public Rect NoteBox(Note n)
+        {
+            return NoteRect(n);
+        }
+
         Note _drag;
         bool _resize;
         Point _p0;
@@ -452,6 +461,16 @@ namespace VoiceBox
                 return;
             }
             if (Host != null) Host.SelectNote(n);
+
+            // A double-click opens the lyric editor; without this the second click would just
+            // start another drag and the words could never be typed where they are read.
+            if (e.ClickCount == 2)
+            {
+                if (LyricEditRequested != null) LyricEditRequested(n);
+                e.Handled = true;
+                return;
+            }
+
             _drag = n;
             _p0 = p;
             _s0 = n.Start;

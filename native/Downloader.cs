@@ -47,7 +47,7 @@ namespace VoiceBox
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
                 string error = null;
-                try { Run(vm, ui); }
+                try { error = Run(vm, ui); }
                 catch (Exception ex) { error = Message(ex); }
                 Application.Current.Dispatcher.BeginInvoke(new Action(delegate
                 {
@@ -70,12 +70,28 @@ namespace VoiceBox
             return m.Length > 130 ? m.Substring(0, 130) : m;
         }
 
-        static void Run(VoiceModel vm, Action<int> progress)
+        // Returns null once the model is on disk, or a short notice when the page had to be
+        // handed to the browser instead.
+        static string Run(VoiceModel vm, Action<int> progress)
         {
             string direct = vm.DirectUrl;
             if (string.IsNullOrEmpty(direct)) direct = Resolve(vm.Url);
             if (string.IsNullOrEmpty(direct))
-                throw new Exception("No direct file found on that page — try a singer with a file link.");
+            {
+                // Official voicebank pages hand off to Drive, MEGA or a click-through, so there is
+                // no archive to fetch here. Opening the page is the only honest outcome, and it
+                // beats a dead-end error the user cannot act on.
+                string notice = "its page has no direct file to fetch, so the page was opened in your browser";
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(vm.Url) { UseShellExecute = true });
+                }
+                catch
+                {
+                    notice = "its page has no direct file to fetch, and the browser could not be opened";
+                }
+                return notice;
+            }
 
             string folder = Path.Combine(Root, Safe(vm.Name));
             Directory.CreateDirectory(folder);
@@ -94,6 +110,7 @@ namespace VoiceBox
                 catch { /* keep the archive if it will not unpack */ }
             }
             vm.LocalPath = folder;
+            return null;
         }
 
         static void Fetch(string url, string path, Action<int> progress)

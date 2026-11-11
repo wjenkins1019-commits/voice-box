@@ -1006,6 +1006,7 @@ namespace VoiceBox
             body.Children.Add(keysClip);
 
             _pr = new PianoRollView(this);
+            _pr.LyricEditRequested += delegate(Note n) { EditLyricOnRoll(n); };
             _prScroll = new ScrollViewer();
             _prScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
             _prScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
@@ -2070,6 +2071,51 @@ namespace VoiceBox
                 _lyricBox.Text = n == null ? "" : n.Word;
                 _updatingUi = false;
             }
+        }
+
+        // Double-clicking a note on the roll types its lyric in place, escape leaves it alone.
+        void EditLyricOnRoll(Note n)
+        {
+            if (n == null || _pr == null) return;
+            Rect r = _pr.NoteBox(n);
+
+            Popup pop = new Popup();
+            pop.PlacementTarget = _pr;
+            pop.Placement = PlacementMode.Relative;
+            pop.StaysOpen = false;
+            pop.HorizontalOffset = Math.Max(0, r.X);
+            pop.VerticalOffset = Math.Max(0, r.Y - 2);
+
+            TextBox box = new TextBox();
+            box.Text = n.Word;
+            box.Width = Math.Max(78, r.Width + 28);
+            box.FontSize = 11;
+            box.Padding = new Thickness(4, 1, 4, 1);
+
+            bool done = false;
+            Action commit = delegate
+            {
+                if (done) return;
+                done = true;
+                string word = box.Text == null ? "" : box.Text.Trim();
+                n.Word = word.Length == 0 ? "la" : word;
+                if (_pr != null) _pr.InvalidateVisual();
+                SelectNote(n);
+                _needRender = true;
+                pop.IsOpen = false;
+            };
+
+            box.KeyDown += delegate(object s, KeyEventArgs e)
+            {
+                if (e.Key == Key.Enter) { commit(); e.Handled = true; }
+                else if (e.Key == Key.Escape) { done = true; pop.IsOpen = false; e.Handled = true; }
+            };
+            box.LostKeyboardFocus += delegate { if (pop.IsOpen) commit(); };
+
+            pop.Child = box;
+            pop.IsOpen = true;
+            box.Focus();
+            box.SelectAll();
         }
 
         public void OnNoteDragged(Note n)
