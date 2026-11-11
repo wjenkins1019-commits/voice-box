@@ -1945,7 +1945,7 @@ namespace VoiceBox
             rightS.Margin = new Thickness(0, 0, 12, 0);
             rightS.Children.Add(T.Txt("STANDALONE", 9, T.TextFaint, FontWeights.SemiBold));
             rightS.Children.Add(T.Sep());
-            rightS.Children.Add(T.Txt("VOICEBOX 2.4.1 · NEURAL DIFFUSION", 9, T.TextFaint, FontWeights.SemiBold));
+            rightS.Children.Add(T.Txt("VOICEBOX 2.4.2 · NEURAL DIFFUSION", 9, T.TextFaint, FontWeights.SemiBold));
             bar.Children.Add(sp);
             bar.Children.Add(rightS);
 
