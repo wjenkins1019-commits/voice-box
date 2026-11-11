@@ -277,6 +277,44 @@ namespace VoiceBox
             }
         }
 
+        static bool IsVowelPhon(string p)
+        {
+            switch (p)
+            {
+                case "ae": case "eh": case "iy": case "ih": case "ow": case "uw": case "ax":
+                case "ay": case "ey": case "ao": case "aa": case "er": case "oy": case "aw":
+                    return true;
+                default: return false;
+            }
+        }
+
+        // The consonant of a syllable, wherever the writer put it. Seeds carry both shapes:
+        // "dh ax" puts the onset first, "ae t" leaves only a coda.
+        static string ConsonantOf(string phon)
+        {
+            if (string.IsNullOrEmpty(phon)) return "";
+            string[] parts = phon.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string p in parts)
+            {
+                string c = p.Trim().ToLowerInvariant();
+                if (c.Length > 0 && !IsVowelPhon(c)) return c;
+            }
+            return "";
+        }
+
+        // 1 sibilant, 2 plosive, 3 fricative, 4 nasal or liquid, 0 nothing recognisable.
+        static int OnsetClass(string c)
+        {
+            switch (c)
+            {
+                case "s": case "sh": case "z": case "zh": case "ch": case "jh": return 1;
+                case "p": case "t": case "k": case "b": case "d": case "g": return 2;
+                case "f": case "v": case "th": case "dh": case "h": return 3;
+                case "m": case "n": case "ng": case "l": case "r": case "w": case "y": return 4;
+                default: return 0;
+            }
+        }
+
         static double Weight(double f, int vowel, double genderMul)
         {
             double s = 0.16;
@@ -446,6 +484,9 @@ namespace VoiceBox
                     }
 
                     double env = Envelope(t, durSec);
+                    // A little shimmer, because a held note sung by a person is never perfectly
+                    // still; without it a sustained vowel sounds like a synth oscillator.
+                    env *= 1.0 + 0.035 * Math.Sin(2 * Math.PI * 5.3 * t + note.Id * 0.7);
                     if (velAttack > 0.0005) env *= Math.Min(1.0, t / velAttack);
                     float ns = (float)(shaped * env * 0.26 * velGain);
                     float lv = (float)(ns * gl), rv = (float)(ns * gr);
@@ -457,16 +498,34 @@ namespace VoiceBox
                     nCount++;
                 }
 
-                // soft consonant onset
-                int consLen = (int)(0.05 * Sr);
+                // The syllable's own consonant shapes the onset: a sibilant hisses, a plosive
+                // clicks, a fricative breathes, a nasal hums. Every syllable used to start with
+                // the same generic click, so a sung line read as an instrument playing notes
+                // rather than a voice saying words.
+                string onset = ConsonantOf(note.Phon);
+                int consLen = (int)(0.050 * Sr);
+                double consLevel = 0.16, consDecay = 70, consHp = 0.15;
+                switch (OnsetClass(onset))
+                {
+                    case 1: consLen = (int)(0.085 * Sr); consLevel = 0.30; consDecay = 22; consHp = 0.90; break;
+                    case 2: consLen = (int)(0.020 * Sr); consLevel = 0.38; consDecay = 130; consHp = 0.55; break;
+                    case 3: consLen = (int)(0.060 * Sr); consLevel = 0.16; consDecay = 38; consHp = 0.25; break;
+                    case 4: consLen = (int)(0.055 * Sr); consLevel = 0.11; consDecay = 30; consHp = 0.05; break;
+                }
+                double prevNoise = 0;
                 for (int k = 0; k < consLen; k++)
                 {
                     int idx = start + k;
                     if (idx < 0 || idx >= total) continue;
                     double t = k / (double)Sr;
                     double wn = rnd.NextDouble() * 2 - 1;
-                    double cenv = Math.Exp(-t * 70) * 0.16 * velGain * velCons;
-                    float cs = (float)(wn * cenv);
+                    // ConsHp tilts the same noise from a hiss down to a hum without needing
+                    // a filter per phoneme, and stays deterministic for the stem sum.
+                    double shapedNoise = wn - prevNoise * consHp;
+                    prevNoise = wn;
+                    double rise = Math.Min(1.0, t / 0.012);
+                    double cenv = Math.Exp(-t * consDecay) * rise * consLevel * velGain * velCons;
+                    float cs = (float)(shapedNoise * cenv);
                     float cl = (float)(cs * gl), cr = (float)(cs * gr);
                     left[idx] += cl;
                     right[idx] += cr;
