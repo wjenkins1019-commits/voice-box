@@ -1,2 +1,5 @@
 # Build output, rebuilt by native/build.ps1
 native/VoiceBox.exe
+
+# Packaged portable builds, rebuilt by native/package.ps1
+dist/
