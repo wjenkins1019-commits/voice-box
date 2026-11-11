@@ -2070,6 +2070,10 @@ namespace VoiceBox
                 _updatingUi = true;
                 _lyricBox.Text = n == null ? "" : n.Word;
                 _updatingUi = false;
+                // With nothing selected this field used to accept characters and throw them
+                // away, which reads as a dead control. Disable it until there is a note.
+                _lyricBox.IsEnabled = n != null;
+                _lyricBox.ToolTip = n == null ? "Select a note on the roll, then type its lyric" : null;
             }
         }
 
@@ -2408,6 +2412,12 @@ namespace VoiceBox
             _lyricsBox.Height = 58;
             _lyricsBox.Padding = new Thickness(7, 5, 7, 5);
             _lyricsBox.VerticalContentAlignment = VerticalAlignment.Top;
+            // Typing sings straight away. Waiting for the button made a typed line look inert.
+            _lyricsBox.TextChanged += delegate
+            {
+                if (_updatingUi) return;
+                PreviewLyrics();
+            };
             body.Children.Add(_lyricsBox);
 
             Grid row = new Grid();
@@ -2423,7 +2433,7 @@ namespace VoiceBox
             row.Children.Add(_lyricsCount);
             body.Children.Add(row);
 
-            TextBlock hint = T.Txt("Sung on the selected track · one syllable per note · leftover notes hold the last vowel.", 8.3, T.C("#5f7897"));
+            TextBlock hint = T.Txt("Sung on the selected track as you type · one syllable per note · leftover notes hold the last vowel.", 8.3, T.C("#5f7897"));
             hint.TextWrapping = TextWrapping.Wrap;
             hint.Margin = new Thickness(0, 7, 0, 0);
             body.Children.Add(hint);
@@ -2920,6 +2930,19 @@ namespace VoiceBox
 
             TextBlock label = _fadeMinBtn != null ? _fadeMinBtn.Child as TextBlock : null;
             if (label != null) label.Text = _fadeCollapsed ? "+" : "–";
+        }
+
+        // Maps the typed line onto the track without the toast, so every keystroke shows its
+        // effect on the roll immediately.
+        void PreviewLyrics()
+        {
+            if (_lyricsBox == null) return;
+            List<Note> notes = Project.VisibleNotes(CurrentTrack);
+            int n = Lyrics.Assign(notes, _lyricsBox.Text);
+            if (_lyricsCount != null) _lyricsCount.Text = n == 0 ? "" : n + " sung";
+            if (_pr != null) _pr.InvalidateVisual();
+            if (_arr != null) _arr.InvalidateVisual();
+            if (n > 0) _needRender = true;
         }
 
         void ApplyLyrics()
