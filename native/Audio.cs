@@ -401,11 +401,14 @@ namespace VoiceBox
             readonly double _drift0, _drift1;
             double _lastT = -1;
 
-            public FormantBank(int vowel, double genderMul, int seed)
+            // fromVowel is the vowel of the note this one follows, or -1 to start from a
+            // neutral schwa. Gliding out of the previous vowel is what makes two notes read as
+            // one sung phrase rather than two separate key presses.
+            public FormantBank(int vowel, int fromVowel, double genderMul, int seed)
             {
                 for (int i = 0; i < 4; i++)
                 {
-                    _from[i] = Neutral[i] * genderMul;
+                    _from[i] = (fromVowel >= 0 && i < 3 ? Formants[fromVowel, i] : Neutral[i]) * genderMul;
                     _to[i] = (i < 3 ? Formants[vowel, i] : 3500) * genderMul;
                     _f[i].Set(_from[i], Bandwidth[i], Sr);
                 }
@@ -435,12 +438,7 @@ namespace VoiceBox
                 }
                 double y = 0;
                 for (int i = 0; i < 4; i++) y += _f[i].Process(src) * Gain[i];
-                // The resonators ring on the source's sharp edges, so their sum is spiky: at the
-                // same peak it measured 29 dB of crest against the piano's 19, which is why a
-                // sung note read as a click with a tone behind it rather than a held vowel.
-                // Soft saturation rounds the peaks off without touching the vowel colour.
-                const double drive = 2.6;
-                return Math.Tanh(y * drive) / drive;
+                return y;
             }
         }
 
@@ -510,12 +508,28 @@ namespace VoiceBox
                 // notes share the render, so per-track stems add back up to the full mix.
                 Random rnd = new Random(unchecked(note.Id * 397 + 7));
 
+                // The note before and after this one on the same track decide whether the two
+                // are one sung phrase or two separate key presses.
+                Note prevN = null, nextN = null;
+                foreach (Note other in notes)
+                {
+                    if (other == note || other.Track != note.Track) continue;
+                    if (other.Start < note.Start && (prevN == null || other.Start > prevN.Start)) prevN = other;
+                    if (other.Start > note.Start && (nextN == null || other.Start < nextN.Start)) nextN = other;
+                }
+                int fromVowel = -1;
+                if (prevN != null && (note.Start - (prevN.Start + prevN.Dur)) <= 0.25) fromVowel = VowelIndex(prevN.Vowel);
+                bool legatoOut = nextN != null && (nextN.Start - (note.Start + note.Dur)) <= 0.15;
+
                 double f0 = 440.0 * Math.Pow(2.0, (note.Midi - 69) / 12.0);
                 int vi = VowelIndex(note.Vowel);
-                FormantBank formants = new FormantBank(vi, genderMul, note.Id);
+                FormantBank formants = new FormantBank(vi, fromVowel, genderMul, note.Id);
 
                 int start = (int)(note.Start * spb * Sr);
                 int durSamples = (int)(note.Dur * spb * Sr);
+                // A legato note holds until the next one starts: no release dip and no silence
+                // between them. That gap is what makes a line sound like separate key presses.
+                if (legatoOut) durSamples = Math.Max(durSamples, (int)((nextN.Start - note.Start) * spb * Sr));
                 int len = durSamples + (int)(0.22 * Sr);
                 double durSec = durSamples / (double)Sr;
 
@@ -552,7 +566,19 @@ namespace VoiceBox
                     double scoop = prog < 0.1 ? -30 * (1 - prog / 0.1) : 0;
                     // A few cents of constant jitter: sung pitch is never a perfect ramp.
                     double jitter = 4.0 * Math.Sin(2 * Math.PI * 3.7 * t + note.Id * 1.7);
-                    double f = f0 * Math.Pow(2.0, (vib + scoop + note.Drift + jitter) / 1200.0);
+                    // Across an interval the pitch slides instead of stepping: a singer scoops
+                    // to the next note, a keyboard cannot.
+                    double portamento = 0;
+                    if (legatoOut && durSec > 0.09)
+                    {
+                        double slideFrom = durSec - 0.07;
+                        if (t > slideFrom)
+                        {
+                            double slide = Math.Min(1.0, (t - slideFrom) / 0.07);
+                            portamento = (nextN.Midi - note.Midi) * 100.0 * slide;
+                        }
+                    }
+                    double f = f0 * Math.Pow(2.0, (vib + scoop + note.Drift + jitter + portamento) / 1200.0);
 
                     phase += f / Sr;
                     if (phase >= 1) phase -= 1;
@@ -576,7 +602,7 @@ namespace VoiceBox
                         shaped = s * (1 - velTone) + lpv * velTone;
                     }
 
-                    double env = Envelope(t, durSec);
+                    double env = Envelope(t, legatoOut ? double.MaxValue : durSec);
                     // A little shimmer, because a held note sung by a person is never perfectly
                     // still; without it a sustained vowel sounds like a synth oscillator.
                     env *= 1.0 + 0.035 * Math.Sin(2 * Math.PI * 5.3 * t + note.Id * 0.7);
@@ -598,12 +624,20 @@ namespace VoiceBox
                 string onset = ConsonantOf(note.Phon);
                 int consLen = (int)(0.050 * Sr);
                 double consLevel = 0.16, consDecay = 70, consHp = 0.15;
+                // Inside a phrase a syllable is not restruck from silence: the consonant is
+                // softened so the line flows rather than clicking on every note.
+                bool legatoIn = fromVowel >= 0;
                 switch (OnsetClass(onset))
                 {
                     case 1: consLen = (int)(0.085 * Sr); consLevel = 0.30; consDecay = 22; consHp = 0.90; break;
                     case 2: consLen = (int)(0.020 * Sr); consLevel = 0.38; consDecay = 130; consHp = 0.55; break;
                     case 3: consLen = (int)(0.060 * Sr); consLevel = 0.16; consDecay = 38; consHp = 0.25; break;
                     case 4: consLen = (int)(0.055 * Sr); consLevel = 0.11; consDecay = 30; consHp = 0.05; break;
+                }
+                if (legatoIn)
+                {
+                    consLen = (int)(consLen * 0.5);
+                    consLevel *= 0.45;
                 }
                 double prevNoise = 0;
                 for (int k = 0; k < consLen; k++)
