@@ -43,6 +43,19 @@ jobs:
           $exe = Get-Item "$PWD\native\VoiceBox.exe"
           "Built {0} - {1:N0} bytes, {2}" -f $exe.Name, $exe.Length, $exe.LastWriteTime
 
+      # ptest.ps1 feeds synthetic tones through PitchTracker.ToNotes, so it needs no
+      # microphone. -Headless skips the live capture and -Check makes a wrong note a
+      # failure. `exit 1` inside a called script only sets $LASTEXITCODE, so the step has
+      # to look at that itself; otherwise a regression would pass silently.
+      - name: Check the transcriber
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$PWD\native\ptest.ps1" -Headless -Check
+          if ($LASTEXITCODE -ne 0) {
+            throw "ptest.ps1 reported a pitch-tracking regression (exit $LASTEXITCODE)"
+          }
+
       - name: Upload VoiceBox.exe
         uses: actions/upload-artifact@v4
         with:

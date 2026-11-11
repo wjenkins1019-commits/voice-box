@@ -1,3 +1,7 @@
+param(
+  [switch]$Headless,  # skip the microphone capture: CI runners have no input device
+  [switch]$Check      # turn the measurements into pass/fail, non-zero on a regression
+)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName PresentationFramework
 
@@ -38,22 +42,62 @@ $vn = $pt.GetMethod('ToNotes').Invoke($null, @([float[]]$vb, 44100, 96.0, 0.0, '
 Write-Output ("VIBRATO_NOTES " + $vn.Count)
 foreach ($x in $vn) { Write-Output ("VIB midi=" + $x.Midi + " start=" + $x.Start + " dur=" + $x.Dur) }
 
-$rec = $asm.GetType('VoiceBox.Recorder')
-Write-Output ("INPUT_DEVICES " + $rec.GetProperty('InputDevices').GetValue($null, $null))
+if ($Headless) {
+  Write-Output "CAPTURE skipped (headless)"
+} else {
+  $rec = $asm.GetType('VoiceBox.Recorder')
+  Write-Output ("INPUT_DEVICES " + $rec.GetProperty('InputDevices').GetValue($null, $null))
 
-$r = [Activator]::CreateInstance($rec)
-$ok = $r.Start()
-Start-Sleep -Milliseconds 1200
-$r.Stop()
-$snap = $r.Snapshot()
-$peak = 0.0
-$sum = 0.0
-$count = [math]::Min(6000, $snap.Length)
-for ($i = 0; $i -lt $count; $i++) {
-  $a = [math]::Abs([double]$snap[$i])
-  if ($a -gt $peak) { $peak = $a }
-  $sum += $a * $a
+  $r = [Activator]::CreateInstance($rec)
+  $ok = $r.Start()
+  Start-Sleep -Milliseconds 1200
+  $r.Stop()
+  $snap = $r.Snapshot()
+  $peak = 0.0
+  $sum = 0.0
+  $count = [math]::Min(6000, $snap.Length)
+  for ($i = 0; $i -lt $count; $i++) {
+    $a = [math]::Abs([double]$snap[$i])
+    if ($a -gt $peak) { $peak = $a }
+    $sum += $a * $a
+  }
+  $rms = 0.0
+  if ($count -gt 0) { $rms = [math]::Round([math]::Sqrt($sum / $count), 4) }
+  Write-Output ("CAPTURE started=" + $ok + " samples=" + $snap.Length + " secs=" + [math]::Round($r.Seconds, 2) + " rms=" + $rms + " peak=" + [math]::Round($peak, 3) + " error=" + $r.Error)
 }
-$rms = 0.0
-if ($count -gt 0) { $rms = [math]::Round([math]::Sqrt($sum / $count), 4) }
-Write-Output ("CAPTURE started=" + $ok + " samples=" + $snap.Length + " secs=" + [math]::Round($r.Seconds, 2) + " rms=" + $rms + " peak=" + [math]::Round($peak, 3) + " error=" + $r.Error)
+
+# -Check turns those measurements into pass/fail, so a change that breaks pitch tracking
+# fails a build instead of quietly printing different numbers. A3 / E4 / C4 are midi 57 /
+# 64 / 60, and the vibrato tone sits on D4 (62) with a 60-cent swing either side.
+if ($Check) {
+  $problems = New-Object System.Collections.Generic.List[string]
+
+  $wantMidi = @(57, 64, 60)
+  $gotMidi = @($notes | ForEach-Object { [int]$_.Midi })
+  if ($gotMidi.Count -ne $wantMidi.Count) {
+    $problems.Add("tone sequence: expected " + $wantMidi.Count + " notes, got " + $gotMidi.Count + " (" + ($gotMidi -join ',') + ")")
+  } else {
+    for ($k = 0; $k -lt $wantMidi.Count; $k++) {
+      if ($gotMidi[$k] -ne $wantMidi[$k]) {
+        $problems.Add("tone sequence note " + ($k + 1) + ": expected midi " + $wantMidi[$k] + ", got " + $gotMidi[$k])
+      }
+    }
+  }
+
+  if ($none.Count -ne 0) { $problems.Add("silence: expected no notes, got " + $none.Count) }
+
+  if ($vn.Count -lt 1) {
+    $problems.Add("vibrato tone: expected at least one note, got none")
+  } else {
+    foreach ($x in $vn) {
+      $m = [int]$x.Midi
+      if ($m -lt 61 -or $m -gt 63) { $problems.Add("vibrato note midi " + $m + " outside the expected 61-63") }
+    }
+  }
+
+  if ($problems.Count -gt 0) {
+    foreach ($p in $problems) { Write-Output ("FAIL " + $p) }
+    exit 1
+  }
+  Write-Output "PTEST OK"
+}

@@ -54,6 +54,12 @@ notes found, plus the input device count and a short live capture:
 powershell -NoProfile -ExecutionPolicy Bypass -File native/ptest.ps1
 ```
 
+Two switches make it usable without a microphone: **`-Headless`** skips the live capture
+(runners have no input device), and **`-Check`** asserts the expected notes — A3/E4/C4 in
+order, nothing from silence, a D4 for the vibrato tone — printing `PTEST OK` or the failed
+expectations, and exiting non-zero so a pitch-tracking regression fails a build. CI runs
+`ptest.ps1 -Headless -Check` after the build.
+
 The **Record · MIDI** panel captures the default microphone at 44.1 kHz mono through
 winmm, starting at the current playhead. While recording, the input level meter moves,
 the elapsed time counts, and a red take clip with a live waveform is drawn on the
