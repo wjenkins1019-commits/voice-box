@@ -6,6 +6,9 @@ Synthesizer V Studio.
 
 It is a desktop application — WPF, C#, no browser, no web runtime, no Node or Python.
 
+![Voice Box: the arrangement, the piano roll with per-note velocity badges, and the voice,
+expression, mix preset and lyrics panels](docs/screenshot.png)
+
 ## Features
 
 - **Piano roll** with drag-to-move, drag-the-edge-to-resize, per-note **velocity** (a lane
