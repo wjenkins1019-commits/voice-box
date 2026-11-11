@@ -562,7 +562,7 @@ namespace VoiceBox
                     double prog = k / (double)Math.Max(1, durSamples);
                     double vibOn = prog < 0.3 ? 0 : Math.Min(1, (prog - 0.3) / 0.5);
                     double vibRate = styled ? st.VibratoRate : note.Rate;
-                    double vib = Math.Sin(2 * Math.PI * vibRate * t) * note.Vib * (styled ? st.VibScale : 1.0) * 55 * vibOn;
+                    double vib = Math.Sin(2 * Math.PI * vibRate * t) * note.Vib * (styled ? st.VibScale : 1.0) * 55 * vibOn * VibScale;
                     double scoop = prog < 0.1 ? -30 * (1 - prog / 0.1) : 0;
                     // A few cents of constant jitter: sung pitch is never a perfect ramp.
                     double jitter = 4.0 * Math.Sin(2 * Math.PI * 3.7 * t + note.Id * 1.7);
@@ -732,6 +732,11 @@ namespace VoiceBox
         // Only a solo on a track that can actually be heard counts. Pressing S and then M on the
         // same track used to leave solo engaged on a silenced track, which silenced every other
         // track as well: a mix of nothing, with the metronome as the only audible part.
+        // Voice-wide vibrato multiplier behind the VIBRATO control. It scales what each note
+        // already asks for, so one slider changes the whole performance without touching the
+        // notes themselves. 1.0 leaves a render exactly as the notes describe it.
+        public static double VibScale = 1.0;
+
         public static bool AnySolo()
         {
             foreach (Track t in Project.Tracks) if (t.Solo && !t.Muted) return true;

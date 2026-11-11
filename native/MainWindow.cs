@@ -79,6 +79,7 @@ namespace VoiceBox
         TextBlock _voiceModeName;
         TextBlock _exprTarget;
         TextBlock _tensionVal;
+        TextBlock _vibScaleVal;
         TextBlock _breathVal;
         TextBlock _genderVal;
         TextBlock _libNote;
@@ -1447,6 +1448,12 @@ namespace VoiceBox
                 _tensionVal.Text = ((int)v).ToString();
                 MarkAudioDirty();
             }, out _tensionVal));
+            sliders.Children.Add(SliderRow("VIBRATO", 0, 200, VocalSynth.VibScale * 100, delegate(double v)
+            {
+                VocalSynth.VibScale = Math.Max(0, v) / 100.0;
+                _vibScaleVal.Text = ((int)v) + "%";
+                MarkAudioDirty();
+            }, out _vibScaleVal));
             sliders.Children.Add(SliderRow("BREATH", 0, 100, _breath, delegate(double v)
             {
                 _breath = v;
@@ -1948,7 +1955,7 @@ namespace VoiceBox
             rightS.Margin = new Thickness(0, 0, 12, 0);
             rightS.Children.Add(T.Txt("STANDALONE", 9, T.TextFaint, FontWeights.SemiBold));
             rightS.Children.Add(T.Sep());
-            rightS.Children.Add(T.Txt("VOICEBOX 2.4.7 · NEURAL DIFFUSION", 9, T.TextFaint, FontWeights.SemiBold));
+            rightS.Children.Add(T.Txt("VOICEBOX 2.4.8 · NEURAL DIFFUSION", 9, T.TextFaint, FontWeights.SemiBold));
             bar.Children.Add(sp);
             bar.Children.Add(rightS);
 
