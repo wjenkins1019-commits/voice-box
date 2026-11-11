@@ -1,0 +1,52 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build VoiceBox.exe
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Show the compiler environment
+        shell: powershell
+        run: |
+          "PowerShell $($PSVersionTable.PSVersion)"
+          "CLR $($PSVersionTable.CLRVersion)"
+
+      # build.ps1 compiles with Add-Type -OutputAssembly, which needs Windows PowerShell
+      # (the .NET Framework compiler), not pwsh. The runner's default shell is pwsh, so
+      # every step that touches the build says `shell: powershell` explicitly.
+      - name: Build
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$PWD\native\build.ps1"
+          if (-not (Test-Path "$PWD\native\VoiceBox.exe")) {
+            throw 'build.ps1 finished without producing native\VoiceBox.exe'
+          }
+
+      - name: Report the executable
+        shell: powershell
+        run: |
+          $exe = Get-Item "$PWD\native\VoiceBox.exe"
+          "Built {0} - {1:N0} bytes, {2}" -f $exe.Name, $exe.Length, $exe.LastWriteTime
+
+      - name: Upload VoiceBox.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceBox-windows
+          path: native/VoiceBox.exe
+          if-no-files-found: error
+          retention-days: 14
