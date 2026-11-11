@@ -289,7 +289,9 @@ reason instead of silently failing. Directory rows say so too.
   chip beside LOOP and CLICK opens the same list, so it can be found without knowing F1.
   The legend also covers **E**, which bypasses and re-enables the equalizer, and **S**, which
   steps through the saved style presets — the same actions as the EQ ON chip and each preset's
-  USE button. Number keys **1** to **9** load a preset directly, in the order the list shows
+  USE button. **Ctrl + R** puts the voice, the three EQ bands and the active style back to their
+  defaults, the same action as the RESET DEFAULTS chip in the voice panel; it is matched before
+  plain **R**, so it never also starts a recording. Number keys **1** to **9** load a preset directly, in the order the list shows
   them, so a particular style is one key away; a number past the end says there is no such
   preset instead of doing nothing. Both number-row and keypad digits work, and are ignored
   while a text box has focus. Shortcuts also announce themselves where they act: the EQ chip

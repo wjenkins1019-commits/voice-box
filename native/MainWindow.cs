@@ -1408,7 +1408,7 @@ namespace VoiceBox
             _resetChip = T.Chip("RESET DEFAULTS", false, delegate { ResetDefaults(); }, null);
             _resetChip.HorizontalAlignment = HorizontalAlignment.Left;
             _resetChip.Margin = new Thickness(0, 0, 0, 8);
-            _resetChip.ToolTip = "Puts vibrato, breath, tension, gender, the EQ and the style back to their factory values";
+            _resetChip.ToolTip = "Puts vibrato, breath, tension, gender, the EQ and the style back to their factory values (Ctrl+R)";
             body.Children.Add(_resetChip);
 
             Grid padGrid = new Grid();
@@ -1997,7 +1997,7 @@ namespace VoiceBox
             rightS.Margin = new Thickness(0, 0, 12, 0);
             rightS.Children.Add(T.Txt("STANDALONE", 9, T.TextFaint, FontWeights.SemiBold));
             rightS.Children.Add(T.Sep());
-            rightS.Children.Add(T.Txt("VOICEBOX 2.4.11 · NEURAL DIFFUSION", 9, T.TextFaint, FontWeights.SemiBold));
+            rightS.Children.Add(T.Txt("VOICEBOX 2.4.12 · NEURAL DIFFUSION", 9, T.TextFaint, FontWeights.SemiBold));
             bar.Children.Add(sp);
             bar.Children.Add(rightS);
 
@@ -4277,6 +4277,7 @@ namespace VoiceBox
             body.Children.Add(HelpRow("Shift + [ / ]", "Bigger fade moves — 48 ms a press"));
             body.Children.Add(HelpRow("R", "Start or stop recording"));
             body.Children.Add(HelpRow("E", "Bypass or re-enable the equalizer"));
+            body.Children.Add(HelpRow("Ctrl + R", "Put the voice, EQ and style back to their defaults"));
             body.Children.Add(HelpRow("S  /  1–9", "Step to the next style preset, or load one by number"));
             body.Children.Add(HelpRow("Delete", "Remove the selected note"));
             body.Children.Add(HelpRow("F1  or  ?", "Show or hide this list"));
@@ -4402,6 +4403,13 @@ namespace VoiceBox
             t.Start();
         }
 
+        // The rule lives on its own so the precedence over plain R can be checked without a
+        // live keyboard, which no test has.
+        static bool IsResetShortcut(Key key, ModifierKeys mods)
+        {
+            return key == Key.R && (mods & ModifierKeys.Control) != 0;
+        }
+
         void OnKey(object sender, KeyEventArgs e)
         {
             if (Keyboard.FocusedElement is TextBox) return;
@@ -4429,6 +4437,8 @@ namespace VoiceBox
             if (e.Key == Key.Home) { SeekBeat(0); e.Handled = true; }
             if (e.Key == Key.OemOpenBrackets) { NudgeFade((Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? -48 : -8); e.Handled = true; }
             if (e.Key == Key.OemCloseBrackets) { NudgeFade((Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? 48 : 8); e.Handled = true; }
+            // Checked before the plain R below, which otherwise starts a recording on the same key.
+            if (IsResetShortcut(e.Key, Keyboard.Modifiers)) { ResetDefaults(); e.Handled = true; return; }
             if (e.Key == Key.R) { ToggleRecord(); e.Handled = true; }
             if (e.Key == Key.E) { ToggleEqBypass(); e.Handled = true; }
             if (e.Key == Key.S) { CycleStylePreset(); e.Handled = true; }
