@@ -69,3 +69,6 @@ $info = Get-Item $setup
 Write-Output ('built ' + $info.FullName)
 Write-Output ('size ' + $info.Length + ' bytes (stub ' + $stubBytes.Length + ' + payload ' + $payload.Length + ' + trailer 40)')
 Write-Output ('sha256 ' + $hash)
+
+# Rewrite dist\SHA256SUMS last, so a release can never pair a fresh setup with a stale list.
+& (Join-Path $here 'checksums.ps1') -OutDir $dist

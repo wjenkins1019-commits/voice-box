@@ -64,3 +64,6 @@ $info = Get-Item $zip
 Write-Output ('packaged ' + $info.FullName)
 Write-Output ('size ' + $info.Length + ' bytes')
 Write-Output ('sha256 ' + $hash)
+
+# Rewrite dist\SHA256SUMS last, so a release can never pair a fresh package with a stale list.
+& (Join-Path $here 'checksums.ps1') -OutDir $dist
